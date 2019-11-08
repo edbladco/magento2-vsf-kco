@@ -146,8 +146,11 @@ class Push extends Action implements CsrfAwareActionInterface
     public function execute()
     {
         $klarnaOrderId = $this->getRequest()->getParam('id');
-        $this->logger->info('Pussing Klarna Order Id: ' . $klarnaOrderId);
+
+        $this->logger->info('Pushing Klarna Order Id: ' . $klarnaOrderId);
+
         $store = $this->storeManager->getStore();
+
         if (!$klarnaOrderId) {
             echo 'Klarna Order ID is required';
             return;
@@ -258,31 +261,47 @@ class Push extends Action implements CsrfAwareActionInterface
      */
     private function updateOrderAddresses(DataObject $checkoutData, CartInterface $quote)
     {
+        $this->logger->info('Start Updating Order Address From Pushing Klarna');
+
         if (!$checkoutData->hasBillingAddress() && !$checkoutData->hasShippingAddress()) {
+            $this->logger->error(sprintf('Klarna order doesn\'t have billing and shipping address for quoteId %s', $quote->getId()));
             return;
         }
 
         $sameAsOther = $checkoutData->getShippingAddress() == $checkoutData->getBillingAddress();
+
         $billingAddress = new DataObject($checkoutData->getBillingAddress());
+
         $billingAddress->setSameAsOther($sameAsOther);
+
         $shippingAddress = new DataObject($checkoutData->getShippingAddress());
+
         $shippingAddress->setSameAsOther($sameAsOther);
 
         if (!$quote->getCustomerId()) {
+
             $websiteId = $quote->getStore()->getWebsiteId();
+
             $customer = $this->customerFactory->create();
+
             $customer->setWebsiteId($websiteId);
+
             $customer->loadByEmail($billingAddress->getEmail());
+
             if (!$customer->getEntityId()) {
+
                 $customer->setWebsiteId($websiteId)
                     ->setStore($quote->getStore())
                     ->setFirstname($billingAddress->getGivenName())
                     ->setLastname($billingAddress->getFamilyName())
                     ->setEmail($billingAddress->getEmail())
                     ->setPassword($billingAddress->getEmail());
+
                 $customer->save();
             }
+
             $customer = $this->customerRepository->getById($customer->getEntityId());
+
             $quote->assignCustomer($customer);
         }
 
@@ -290,14 +309,23 @@ class Push extends Action implements CsrfAwareActionInterface
             $this->addressDataTransform->prepareMagentoAddress($billingAddress)
         );
 
+
+        $this->logger->info(sprintf('Updated Billing Address Data for QuoteId %s :', $quote->getId()).print_r($quote->getBillingAddress()->getData(),true));
+
         /**
          * @todo  check use 'Billing as shiiping'
          */
         if ($checkoutData->hasShippingAddress()) {
+
             $quote->setTotalsCollectedFlag(false);
+
             $quote->getShippingAddress()->addData(
                 $this->addressDataTransform->prepareMagentoAddress($shippingAddress)
             );
+
+            $this->logger->info(sprintf('Updated Shipping Address Data for QuoteId %s :', $quote->getId()).print_r($quote->getShippingAddress()->getData(),true));
         }
+
+        $this->logger->info('End Updating Order Address From Pushing Klarna');
     }
 }
