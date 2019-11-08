@@ -17,8 +17,13 @@ use Magento\Quote\Model\QuoteManagement;
 use Magento\Store\Model\StoreManagerInterface;
 use Magento\Sales\Api\OrderRepositoryInterface as MageOrderRepositoryInterface;
 use Psr\Log\LoggerInterface;
+use Magento\Framework\DataObject;
+use Magento\Quote\Api\Data\CartInterface;
 
-
+/**
+ * Class Push
+ * @package Kodbruket\VsfKco\Controller\Order
+ */
 class Push extends Action implements CsrfAwareActionInterface
 {
 
@@ -69,6 +74,21 @@ class Push extends Action implements CsrfAwareActionInterface
     private $mageOrderRepository;
 
     /**
+     * @var \Kodbruket\VsfKco\Model\Klarna\DataTransform\Request\Address
+     */
+    private $addressDataTransform;
+
+    /**
+     * @var \Magento\Customer\Api\CustomerRepositoryInterface
+     */
+    private $customerRepository;
+
+    /**
+     * @var \Magento\Customer\Model\CustomerFactory
+     */
+    private $customerFactory;
+
+    /**
      * Push constructor.
      * @param Context $context
      * @param LoggerInterface $logger
@@ -80,8 +100,10 @@ class Push extends Action implements CsrfAwareActionInterface
      * @param StoreManagerInterface $storeManager
      * @param QuoteIdMaskFactory $quoteIdMaskFactory
      * @param MageOrderRepositoryInterface $mageOrderRepository
+     * @param \Kodbruket\VsfKco\Model\Klarna\DataTransform\Request\Address $addressDataTransform
+     * @param \Magento\Customer\Api\CustomerRepositoryInterface $customerRepository
+     * @param \Magento\Customer\Model\CustomerFactory $customerFactory
      */
-
     public function __construct(
         Context $context,
         LoggerInterface $logger,
@@ -92,7 +114,11 @@ class Push extends Action implements CsrfAwareActionInterface
         Ordermanagement $orderManagement,
         StoreManagerInterface $storeManager,
         QuoteIdMaskFactory $quoteIdMaskFactory,
-        MageOrderRepositoryInterface $mageOrderRepository
+        MageOrderRepositoryInterface $mageOrderRepository,
+        \Kodbruket\VsfKco\Model\Klarna\DataTransform\Request\Address $addressDataTransform,
+        \Magento\Customer\Api\CustomerRepositoryInterface $customerRepository,
+        \Magento\Customer\Model\CustomerFactory $customerFactory
+
     ) {
         $this->logger = $logger;
         $this->klarnaOrderFactory = $klarnaOrderFactory;
@@ -103,11 +129,20 @@ class Push extends Action implements CsrfAwareActionInterface
         $this->storeManager = $storeManager;
         $this->quoteIdMaskFactory = $quoteIdMaskFactory;
         $this->mageOrderRepository = $mageOrderRepository;
+        $this->addressDataTransform = $addressDataTransform;
+        $this->customerRepository   = $customerRepository;
+        $this->customerFactory      = $customerFactory;
         parent::__construct(
             $context
         );
     }
 
+    /**
+     * @return \Magento\Framework\App\ResponseInterface|\Magento\Framework\Controller\ResultInterface|void
+     * @throws \Klarna\Core\Exception
+     * @throws \Magento\Framework\Exception\LocalizedException
+     * @throws \Magento\Framework\Exception\NoSuchEntityException
+     */
     public function execute()
     {
         $klarnaOrderId = $this->getRequest()->getParam('id');
@@ -125,15 +160,25 @@ class Push extends Action implements CsrfAwareActionInterface
         }
 
         $this->orderManagement->resetForStore($store, ConfigHelper::KCO_METHOD_CODE);
+
         $placedKlarnaOrder = $this->orderManagement->getPlacedKlarnaOrder($klarnaOrderId);
 
         $maskedId = $placedKlarnaOrder->getDataByKey('merchant_reference2');
+
         $quoteIdMask = $this->quoteIdMaskFactory->create()->load($maskedId, 'masked_id');
+
         $quoteId = $quoteIdMask->getQuoteId();
+
         $quote = $this->cartRepository->get($quoteId);
+
         if (!$quote->getId()) {
             echo 'Quote is not existed in Magento';
         }
+
+        /**
+         *  Update shipping/billing address for quote.
+         */
+        $this->updateOrderAddresses($placedKlarnaOrder, $quote);
 
         if ($klarnaOrder->getOrderId()) {
             $this->acknowledgeOrder($klarnaOrderId, $klarnaOrder->getOrderId(), $quoteId);
@@ -154,6 +199,11 @@ class Push extends Action implements CsrfAwareActionInterface
         exit;
     }
 
+    /**
+     * @param $klarnaOrderId
+     * @param $orderId
+     * @param $quoteId
+     */
     private function acknowledgeOrder($klarnaOrderId, $orderId, $quoteId)
     {
         if ($klarnaOrderId && $orderId && $quoteId) {
@@ -198,5 +248,56 @@ class Push extends Action implements CsrfAwareActionInterface
     public function validateForCsrf(RequestInterface $request): ?bool
     {
         return true;
+    }
+
+    /**
+     * @param DataObject $checkoutData
+     * @param \Magento\Quote\Model\Quote|CartInterface $quote
+     * @throws \Magento\Framework\Exception\LocalizedException
+     * @throws \Magento\Framework\Exception\NoSuchEntityException
+     */
+    private function updateOrderAddresses(DataObject $checkoutData, CartInterface $quote)
+    {
+        if (!$checkoutData->hasBillingAddress() && !$checkoutData->hasShippingAddress()) {
+            return;
+        }
+
+        $sameAsOther = $checkoutData->getShippingAddress() == $checkoutData->getBillingAddress();
+        $billingAddress = new DataObject($checkoutData->getBillingAddress());
+        $billingAddress->setSameAsOther($sameAsOther);
+        $shippingAddress = new DataObject($checkoutData->getShippingAddress());
+        $shippingAddress->setSameAsOther($sameAsOther);
+
+        if (!$quote->getCustomerId()) {
+            $websiteId = $quote->getStore()->getWebsiteId();
+            $customer = $this->customerFactory->create();
+            $customer->setWebsiteId($websiteId);
+            $customer->loadByEmail($billingAddress->getEmail());
+            if (!$customer->getEntityId()) {
+                $customer->setWebsiteId($websiteId)
+                    ->setStore($quote->getStore())
+                    ->setFirstname($billingAddress->getGivenName())
+                    ->setLastname($billingAddress->getFamilyName())
+                    ->setEmail($billingAddress->getEmail())
+                    ->setPassword($billingAddress->getEmail());
+                $customer->save();
+            }
+            $customer = $this->customerRepository->getById($customer->getEntityId());
+            $quote->assignCustomer($customer);
+        }
+
+        $quote->getBillingAddress()->addData(
+            $this->addressDataTransform->prepareMagentoAddress($billingAddress)
+        );
+
+        /**
+         * @todo  check use 'Billing as shiiping'
+         */
+        if ($checkoutData->hasShippingAddress()) {
+            $quote->setTotalsCollectedFlag(false);
+            $quote->getShippingAddress()->addData(
+                $this->addressDataTransform->prepareMagentoAddress($shippingAddress)
+            );
+        }
     }
 }
