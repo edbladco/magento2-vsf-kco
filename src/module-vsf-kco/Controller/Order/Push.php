@@ -10,6 +10,7 @@ use Magento\Framework\App\Action\Action;
 use Magento\Framework\App\Action\Context;
 use Magento\Framework\App\CsrfAwareActionInterface;
 use Magento\Framework\App\RequestInterface;
+use Magento\Framework\App\Config\ScopeConfigInterface;
 use Magento\Framework\App\Request\InvalidRequestException;
 use Magento\Quote\Api\CartRepositoryInterface;
 use Magento\Quote\Model\QuoteIdMaskFactory;
@@ -91,6 +92,11 @@ class Push extends Action implements CsrfAwareActionInterface
     private $customerFactory;
 
     /**
+     * @var ScopeConfigInterface
+     */
+    private $scopeConfig;
+
+    /**
      * Push constructor.
      * @param Context $context
      * @param LoggerInterface $logger
@@ -119,8 +125,8 @@ class Push extends Action implements CsrfAwareActionInterface
         MageOrderRepositoryInterface $mageOrderRepository,
         AddressDataTransform $addressDataTransform,
         CustomerRepositoryInterface $customerRepository,
-        CustomerFactory $customerFactory
-
+        CustomerFactory $customerFactory,
+        ScopeConfigInterface $scopeConfig
     ) {
         $this->logger = $logger;
         $this->klarnaOrderFactory = $klarnaOrderFactory;
@@ -134,6 +140,7 @@ class Push extends Action implements CsrfAwareActionInterface
         $this->addressDataTransform = $addressDataTransform;
         $this->customerRepository   = $customerRepository;
         $this->customerFactory      = $customerFactory;
+        $this->scopeConfig = $scopeConfig;
         parent::__construct(
             $context
         );
@@ -173,7 +180,7 @@ class Push extends Action implements CsrfAwareActionInterface
         $quoteIdMask = $this->quoteIdMaskFactory->create()->load($maskedId, 'masked_id');
 
         $quoteId = $quoteIdMask->getQuoteId();
-      
+
         if( (int)$quoteId == 0 && ctype_digit(strval($maskedId)) ){
             $quoteId = (int)$maskedId;
         }
@@ -201,7 +208,9 @@ class Push extends Action implements CsrfAwareActionInterface
             } catch (\Exception $exception) {
                 echo 'Create order error: ' . $exception->getMessage();
                 //Cancel Klarna Order if can not create order from merchant
-                $this->orderManagement->cancel($klarnaOrderId);
+                if($this->scopeConfig->isSetFlag('klarna/cancel/allow')){
+                    $this->orderManagement->cancel($klarnaOrderId);
+                }
                 return;
             }
         }

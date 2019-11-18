@@ -191,8 +191,10 @@ class Confirmation extends Action implements CsrfAwareActionInterface
                 return $resultRedirect;
 
             } catch (\Exception $exception) {
-                $this->logger->critical('Create order error' . $exception->getMessage());
-                $this->orderManagement->cancel($klarnaOrderId);
+                $this->logger->critical('Create order error ('.$quote->getId().')' . $exception->getMessage());
+                if($this->scopeConfig->isSetFlag('klarna/cancel/allow')){
+                    $this->orderManagement->cancel($klarnaOrderId);
+                }
             }
         }
 
