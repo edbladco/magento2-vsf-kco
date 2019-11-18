@@ -18,6 +18,7 @@ use Magento\Quote\Model\QuoteManagement;
 use Magento\Store\Model\ScopeInterface;
 use Magento\Store\Model\StoreManagerInterface;
 use Psr\Log\LoggerInterface;
+use Kodbruket\VsfKco\Helper\Order as OrderHelper;
 
 class Confirmation extends Action implements CsrfAwareActionInterface
 {
@@ -69,6 +70,11 @@ class Confirmation extends Action implements CsrfAwareActionInterface
     private $scopeConfig;
 
     /**
+     * @var OrderHelper
+     */
+    private $orderHelper;
+
+    /**
      * Push constructor.
      * @param Context $context
      * @param LoggerInterface $logger
@@ -78,6 +84,10 @@ class Confirmation extends Action implements CsrfAwareActionInterface
      * @param CartRepositoryInterface $cartRepository
      * @param Ordermanagement $orderManagement
      * @param StoreManagerInterface $storeManager
+     * @param QuoteIdMaskFactory $quoteIdMaskFactory
+     * @param ScopeConfigInterface $scopeConfig
+     * @param ConfigHelper $helper
+     * @param OrderHelper $orderHelper
      */
 
     public function __construct(
@@ -91,7 +101,8 @@ class Confirmation extends Action implements CsrfAwareActionInterface
         StoreManagerInterface $storeManager,
         QuoteIdMaskFactory $quoteIdMaskFactory,
         ScopeConfigInterface $scopeConfig,
-        ConfigHelper $helper
+        ConfigHelper $helper,
+        OrderHelper $orderHelper
     ) {
         $this->logger = $logger;
         $this->klarnaOrderFactory = $klarnaOrderFactory;
@@ -103,6 +114,7 @@ class Confirmation extends Action implements CsrfAwareActionInterface
         $this->quoteIdMaskFactory = $quoteIdMaskFactory;
         $this->scopeConfig = $scopeConfig;
         $this->helper = $helper;
+        $this->orderHelper = $orderHelper;
 
         parent::__construct(
             $context
@@ -191,10 +203,9 @@ class Confirmation extends Action implements CsrfAwareActionInterface
                 return $resultRedirect;
 
             } catch (\Exception $exception) {
-                $this->logger->critical('Create order error ('.$quote->getId().')' . $exception->getMessage());
-                if($this->scopeConfig->isSetFlag('klarna/cancel/allow')){
-                    $this->orderManagement->cancel($klarnaOrderId);
-                }
+                $message = 'Create order error ('.$quote->getId().')' . $exception->getMessage();
+                $this->orderHelper->cancel($klarnaOrderId, $order ? $order->getId() : false, $message, $exception);
+                $this->logger->critical($message);
             }
         }
 
@@ -206,7 +217,7 @@ class Confirmation extends Action implements CsrfAwareActionInterface
 
     /**
      * Create CSRF validation exception
-     * 
+     *
      * @param RequestInterface $request
      *
      * @return InvalidRequestException|null
@@ -218,7 +229,7 @@ class Confirmation extends Action implements CsrfAwareActionInterface
 
     /**
      * Validate for CSRF
-     * 
+     *
      * @param RequestInterface $request
      *
      * @return bool|null

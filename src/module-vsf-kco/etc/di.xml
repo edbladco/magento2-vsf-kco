@@ -50,4 +50,10 @@
         </arguments>
     </type>
 
+    <type name="Kodbruket\VsfKco\Helper\Email">
+        <arguments>
+            <argument name="logger" xsi:type="object">klarnaCallbackLogger</argument>
+        </arguments>
+    </type>
+
 </config>

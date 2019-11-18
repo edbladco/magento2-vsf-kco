@@ -1,0 +1,4 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Email:etc/email_templates.xsd">
+    <template id="vsfkco_to_admin_order_cancelled" label="Klarna Order Cancelled Notification" file="order-cancelled.html" type="html" module="Kodbruket_VsfKco" area="frontend"/>
+</config>

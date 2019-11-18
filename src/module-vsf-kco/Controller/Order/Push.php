@@ -10,7 +10,6 @@ use Magento\Framework\App\Action\Action;
 use Magento\Framework\App\Action\Context;
 use Magento\Framework\App\CsrfAwareActionInterface;
 use Magento\Framework\App\RequestInterface;
-use Magento\Framework\App\Config\ScopeConfigInterface;
 use Magento\Framework\App\Request\InvalidRequestException;
 use Magento\Quote\Api\CartRepositoryInterface;
 use Magento\Quote\Model\QuoteIdMaskFactory;
@@ -23,6 +22,7 @@ use Magento\Quote\Api\Data\CartInterface;
 use Kodbruket\VsfKco\Model\Klarna\DataTransform\Request\Address as AddressDataTransform;
 use Magento\Customer\Api\CustomerRepositoryInterface;
 use Magento\Customer\Model\CustomerFactory;
+use Kodbruket\VsfKco\Helper\Order as OrderHelper;
 
 /**
  * Class Push
@@ -92,9 +92,9 @@ class Push extends Action implements CsrfAwareActionInterface
     private $customerFactory;
 
     /**
-     * @var ScopeConfigInterface
+     * @var OrderHelper
      */
-    private $scopeConfig;
+    private $orderHelper;
 
     /**
      * Push constructor.
@@ -111,6 +111,8 @@ class Push extends Action implements CsrfAwareActionInterface
      * @param AddressDataTransform $addressDataTransform
      * @param CustomerRepositoryInterface $customerRepository
      * @param CustomerFactory $customerFactory
+     * @param OrderHelper $orderHelper
+     * @param EmailHelper $emailHelper
      */
     public function __construct(
         Context $context,
@@ -126,7 +128,7 @@ class Push extends Action implements CsrfAwareActionInterface
         AddressDataTransform $addressDataTransform,
         CustomerRepositoryInterface $customerRepository,
         CustomerFactory $customerFactory,
-        ScopeConfigInterface $scopeConfig
+        OrderHelper $orderHelper
     ) {
         $this->logger = $logger;
         $this->klarnaOrderFactory = $klarnaOrderFactory;
@@ -140,7 +142,7 @@ class Push extends Action implements CsrfAwareActionInterface
         $this->addressDataTransform = $addressDataTransform;
         $this->customerRepository   = $customerRepository;
         $this->customerFactory      = $customerFactory;
-        $this->scopeConfig = $scopeConfig;
+        $this->orderHelper = $orderHelper;
         parent::__construct(
             $context
         );
@@ -206,11 +208,9 @@ class Push extends Action implements CsrfAwareActionInterface
                 echo 'Magento order created with ID ' . $order->getIncrementId();
                 return;
             } catch (\Exception $exception) {
-                echo 'Create order error: ' . $exception->getMessage();
-                //Cancel Klarna Order if can not create order from merchant
-                if($this->scopeConfig->isSetFlag('klarna/cancel/allow')){
-                    $this->orderManagement->cancel($klarnaOrderId);
-                }
+                $message = 'Create order error ('.$quote->getId().')' . $exception->getMessage();
+                $this->orderHelper->cancel($klarnaOrderId, $order ? $order->getId() : false, $message, $exception);
+                $this->logger->critical($message);
                 return;
             }
         }

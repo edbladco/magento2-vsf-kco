@@ -1,0 +1,35 @@
+<!--@subject {{trans "Klarna Order Has Been Cancelled"}} @-->
+
+{{template config_path="design/email/header_template"}}
+
+<p>{{trans "Hello Admin,"}},</p>
+<br>
+<p>
+    {{trans "Unfortunately the following Klarna Order has been cancelled:"}}
+</p>
+<p>
+    {{trans "Klarna Order Id: %klarnaOrderId" message=$klarnaOrderId}}
+</p>
+
+{{if magentoOrderId}}
+<p>
+    {{trans "Magento Order Id: %magentoOrderId" magentoOrderId=$magentoOrderId}}
+</p>
+{{/if}}
+
+{{if message}}
+<p>
+    {{trans "Message: %message" message=$message}}
+</p>
+{{/if}}
+
+{{if traceString}}
+<p>
+    {{trans "Exception trace: "}}
+</p>
+<pre>{{var traceString}}</pre>
+{{/if}}
+
+<p>{{trans "Kind regards"}},</p>
+
+{{template config_path="design/email/footer_template"}}
