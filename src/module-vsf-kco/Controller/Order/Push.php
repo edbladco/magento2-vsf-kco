@@ -17,8 +17,16 @@ use Magento\Quote\Model\QuoteManagement;
 use Magento\Store\Model\StoreManagerInterface;
 use Magento\Sales\Api\OrderRepositoryInterface as MageOrderRepositoryInterface;
 use Psr\Log\LoggerInterface;
+use Magento\Framework\DataObject;
+use Magento\Quote\Api\Data\CartInterface;
+use Kodbruket\VsfKco\Model\Klarna\DataTransform\Request\Address as AddressDataTransform;
+use Magento\Customer\Api\CustomerRepositoryInterface;
+use Magento\Customer\Model\CustomerFactory;
 
-
+/**
+ * Class Push
+ * @package Kodbruket\VsfKco\Controller\Order
+ */
 class Push extends Action implements CsrfAwareActionInterface
 {
 
@@ -41,7 +49,6 @@ class Push extends Action implements CsrfAwareActionInterface
      * @var QuoteManagement
      */
     private $quoteManagement;
-
 
     /**
      * @var CartRepositoryInterface
@@ -69,6 +76,21 @@ class Push extends Action implements CsrfAwareActionInterface
     private $mageOrderRepository;
 
     /**
+     * @var AddressDataTransform
+     */
+    private $addressDataTransform;
+
+    /**
+     * @var CustomerRepositoryInterface
+     */
+    private $customerRepository;
+
+    /**
+     * @var CustomerFactory
+     */
+    private $customerFactory;
+
+    /**
      * Push constructor.
      * @param Context $context
      * @param LoggerInterface $logger
@@ -80,8 +102,10 @@ class Push extends Action implements CsrfAwareActionInterface
      * @param StoreManagerInterface $storeManager
      * @param QuoteIdMaskFactory $quoteIdMaskFactory
      * @param MageOrderRepositoryInterface $mageOrderRepository
+     * @param AddressDataTransform $addressDataTransform
+     * @param CustomerRepositoryInterface $customerRepository
+     * @param CustomerFactory $customerFactory
      */
-
     public function __construct(
         Context $context,
         LoggerInterface $logger,
@@ -92,7 +116,11 @@ class Push extends Action implements CsrfAwareActionInterface
         Ordermanagement $orderManagement,
         StoreManagerInterface $storeManager,
         QuoteIdMaskFactory $quoteIdMaskFactory,
-        MageOrderRepositoryInterface $mageOrderRepository
+        MageOrderRepositoryInterface $mageOrderRepository,
+        AddressDataTransform $addressDataTransform,
+        CustomerRepositoryInterface $customerRepository,
+        CustomerFactory $customerFactory
+
     ) {
         $this->logger = $logger;
         $this->klarnaOrderFactory = $klarnaOrderFactory;
@@ -103,16 +131,28 @@ class Push extends Action implements CsrfAwareActionInterface
         $this->storeManager = $storeManager;
         $this->quoteIdMaskFactory = $quoteIdMaskFactory;
         $this->mageOrderRepository = $mageOrderRepository;
+        $this->addressDataTransform = $addressDataTransform;
+        $this->customerRepository   = $customerRepository;
+        $this->customerFactory      = $customerFactory;
         parent::__construct(
             $context
         );
     }
 
+    /**
+     * @return \Magento\Framework\App\ResponseInterface|\Magento\Framework\Controller\ResultInterface|void
+     * @throws \Klarna\Core\Exception
+     * @throws \Magento\Framework\Exception\LocalizedException
+     * @throws \Magento\Framework\Exception\NoSuchEntityException
+     */
     public function execute()
     {
         $klarnaOrderId = $this->getRequest()->getParam('id');
-        $this->logger->info('Pussing Klarna Order Id: ' . $klarnaOrderId);
+
+        $this->logger->info('Pushing Klarna Order Id: ' . $klarnaOrderId);
+
         $store = $this->storeManager->getStore();
+
         if (!$klarnaOrderId) {
             echo 'Klarna Order ID is required';
             return;
@@ -125,18 +165,29 @@ class Push extends Action implements CsrfAwareActionInterface
         }
 
         $this->orderManagement->resetForStore($store, ConfigHelper::KCO_METHOD_CODE);
+
         $placedKlarnaOrder = $this->orderManagement->getPlacedKlarnaOrder($klarnaOrderId);
 
         $maskedId = $placedKlarnaOrder->getDataByKey('merchant_reference2');
+
         $quoteIdMask = $this->quoteIdMaskFactory->create()->load($maskedId, 'masked_id');
+
         $quoteId = $quoteIdMask->getQuoteId();
-        if( (int)$quoteId==0 && ctype_digit(strval($maskedId))){
+      
+        if( (int)$quoteId == 0 && ctype_digit(strval($maskedId)) ){
             $quoteId = (int)$maskedId;
         }
+
         $quote = $this->cartRepository->get($quoteId);
+
         if (!$quote->getId()) {
             echo 'Quote is not existed in Magento';
         }
+
+        /**
+         *  Update shipping/billing address for quote.
+         */
+        $this->updateOrderAddresses($placedKlarnaOrder, $quote);
 
         if ($klarnaOrder->getOrderId()) {
             $this->acknowledgeOrder($klarnaOrderId, $klarnaOrder->getOrderId(), $quoteId);
@@ -157,6 +208,11 @@ class Push extends Action implements CsrfAwareActionInterface
         exit;
     }
 
+    /**
+     * @param $klarnaOrderId
+     * @param $orderId
+     * @param $quoteId
+     */
     private function acknowledgeOrder($klarnaOrderId, $orderId, $quoteId)
     {
         if ($klarnaOrderId && $orderId && $quoteId) {
@@ -201,5 +257,81 @@ class Push extends Action implements CsrfAwareActionInterface
     public function validateForCsrf(RequestInterface $request): ?bool
     {
         return true;
+    }
+
+    /**
+     * @param DataObject $checkoutData
+     * @param \Magento\Quote\Model\Quote|CartInterface $quote
+     * @throws \Magento\Framework\Exception\LocalizedException
+     * @throws \Magento\Framework\Exception\NoSuchEntityException
+     */
+    private function updateOrderAddresses(DataObject $checkoutData, CartInterface $quote)
+    {
+        $this->logger->info('Start Updating Order Address From Pushing Klarna');
+
+        if (!$checkoutData->hasBillingAddress() && !$checkoutData->hasShippingAddress()) {
+            $this->logger->error(sprintf('Klarna order doesn\'t have billing and shipping address for quoteId %s', $quote->getId()));
+            return;
+        }
+
+        $sameAsOther = $checkoutData->getShippingAddress() == $checkoutData->getBillingAddress();
+
+        $billingAddress = new DataObject($checkoutData->getBillingAddress());
+
+        $billingAddress->setSameAsOther($sameAsOther);
+
+        $shippingAddress = new DataObject($checkoutData->getShippingAddress());
+
+        $shippingAddress->setSameAsOther($sameAsOther);
+
+        if (!$quote->getCustomerId()) {
+
+            $websiteId = $quote->getStore()->getWebsiteId();
+
+            $customer = $this->customerFactory->create();
+
+            $customer->setWebsiteId($websiteId);
+
+            $customer->loadByEmail($billingAddress->getEmail());
+
+            if (!$customer->getEntityId()) {
+
+                $customer->setWebsiteId($websiteId)
+                    ->setStore($quote->getStore())
+                    ->setFirstname($billingAddress->getGivenName())
+                    ->setLastname($billingAddress->getFamilyName())
+                    ->setEmail($billingAddress->getEmail())
+                    ->setPassword($billingAddress->getEmail());
+
+                $customer->save();
+            }
+
+            $customer = $this->customerRepository->getById($customer->getEntityId());
+
+            $quote->assignCustomer($customer);
+        }
+
+        $quote->getBillingAddress()->addData(
+            $this->addressDataTransform->prepareMagentoAddress($billingAddress)
+        );
+
+
+        $this->logger->info(sprintf('Updated Billing Address Data for QuoteId %s :', $quote->getId()).print_r($quote->getBillingAddress()->getData(),true));
+
+        /**
+         * @todo  check use 'Billing as shiiping'
+         */
+        if ($checkoutData->hasShippingAddress()) {
+
+            $quote->setTotalsCollectedFlag(false);
+
+            $quote->getShippingAddress()->addData(
+                $this->addressDataTransform->prepareMagentoAddress($shippingAddress)
+            );
+
+            $this->logger->info(sprintf('Updated Shipping Address Data for QuoteId %s :', $quote->getId()).print_r($quote->getShippingAddress()->getData(),true));
+        }
+
+        $this->logger->info('End Updating Order Address From Pushing Klarna');
     }
 }
