@@ -19,6 +19,9 @@ use Magento\Sales\Api\OrderRepositoryInterface as MageOrderRepositoryInterface;
 use Psr\Log\LoggerInterface;
 use Magento\Framework\DataObject;
 use Magento\Quote\Api\Data\CartInterface;
+use Kodbruket\VsfKco\Model\Klarna\DataTransform\Request\Address as AddressDataTransform;
+use Magento\Customer\Api\CustomerRepositoryInterface;
+use Magento\Customer\Model\CustomerFactory;
 
 /**
  * Class Push
@@ -47,7 +50,6 @@ class Push extends Action implements CsrfAwareActionInterface
      */
     private $quoteManagement;
 
-
     /**
      * @var CartRepositoryInterface
      */
@@ -74,17 +76,17 @@ class Push extends Action implements CsrfAwareActionInterface
     private $mageOrderRepository;
 
     /**
-     * @var \Kodbruket\VsfKco\Model\Klarna\DataTransform\Request\Address
+     * @var AddressDataTransform
      */
     private $addressDataTransform;
 
     /**
-     * @var \Magento\Customer\Api\CustomerRepositoryInterface
+     * @var CustomerRepositoryInterface
      */
     private $customerRepository;
 
     /**
-     * @var \Magento\Customer\Model\CustomerFactory
+     * @var CustomerFactory
      */
     private $customerFactory;
 
@@ -100,9 +102,9 @@ class Push extends Action implements CsrfAwareActionInterface
      * @param StoreManagerInterface $storeManager
      * @param QuoteIdMaskFactory $quoteIdMaskFactory
      * @param MageOrderRepositoryInterface $mageOrderRepository
-     * @param \Kodbruket\VsfKco\Model\Klarna\DataTransform\Request\Address $addressDataTransform
-     * @param \Magento\Customer\Api\CustomerRepositoryInterface $customerRepository
-     * @param \Magento\Customer\Model\CustomerFactory $customerFactory
+     * @param AddressDataTransform $addressDataTransform
+     * @param CustomerRepositoryInterface $customerRepository
+     * @param CustomerFactory $customerFactory
      */
     public function __construct(
         Context $context,
@@ -115,9 +117,9 @@ class Push extends Action implements CsrfAwareActionInterface
         StoreManagerInterface $storeManager,
         QuoteIdMaskFactory $quoteIdMaskFactory,
         MageOrderRepositoryInterface $mageOrderRepository,
-        \Kodbruket\VsfKco\Model\Klarna\DataTransform\Request\Address $addressDataTransform,
-        \Magento\Customer\Api\CustomerRepositoryInterface $customerRepository,
-        \Magento\Customer\Model\CustomerFactory $customerFactory
+        AddressDataTransform $addressDataTransform,
+        CustomerRepositoryInterface $customerRepository,
+        CustomerFactory $customerFactory
 
     ) {
         $this->logger = $logger;
