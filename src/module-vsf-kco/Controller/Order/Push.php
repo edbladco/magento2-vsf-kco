@@ -173,6 +173,10 @@ class Push extends Action implements CsrfAwareActionInterface
         $quoteIdMask = $this->quoteIdMaskFactory->create()->load($maskedId, 'masked_id');
 
         $quoteId = $quoteIdMask->getQuoteId();
+      
+        if( (int)$quoteId == 0 && ctype_digit(strval($maskedId)) ){
+            $quoteId = (int)$maskedId;
+        }
 
         $quote = $this->cartRepository->get($quoteId);
 
