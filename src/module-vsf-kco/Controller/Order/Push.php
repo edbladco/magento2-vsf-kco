@@ -23,6 +23,7 @@ use Kodbruket\VsfKco\Model\Klarna\DataTransform\Request\Address as AddressDataTr
 use Magento\Customer\Api\CustomerRepositoryInterface;
 use Magento\Customer\Model\CustomerFactory;
 use Kodbruket\VsfKco\Helper\Order as OrderHelper;
+use Kodbruket\VsfKco\Helper\Data as VsfKcoHelper;
 
 /**
  * Class Push
@@ -30,6 +31,7 @@ use Kodbruket\VsfKco\Helper\Order as OrderHelper;
  */
 class Push extends Action implements CsrfAwareActionInterface
 {
+    const EVENT_NAME = 'Push';
 
     /**
      * @var LoggerInterface
@@ -97,6 +99,11 @@ class Push extends Action implements CsrfAwareActionInterface
     private $orderHelper;
 
     /**
+     * @var VsfKcoHelper
+     */
+    private $helper;
+
+    /**
      * Push constructor.
      * @param Context $context
      * @param LoggerInterface $logger
@@ -113,6 +120,7 @@ class Push extends Action implements CsrfAwareActionInterface
      * @param CustomerFactory $customerFactory
      * @param OrderHelper $orderHelper
      * @param EmailHelper $emailHelper
+     * @param VsfKcoHelper $helper
      */
     public function __construct(
         Context $context,
@@ -128,7 +136,8 @@ class Push extends Action implements CsrfAwareActionInterface
         AddressDataTransform $addressDataTransform,
         CustomerRepositoryInterface $customerRepository,
         CustomerFactory $customerFactory,
-        OrderHelper $orderHelper
+        OrderHelper $orderHelper,
+        VsfKcoHelper $helper
     ) {
         $this->logger = $logger;
         $this->klarnaOrderFactory = $klarnaOrderFactory;
@@ -143,6 +152,7 @@ class Push extends Action implements CsrfAwareActionInterface
         $this->customerRepository   = $customerRepository;
         $this->customerFactory      = $customerFactory;
         $this->orderHelper = $orderHelper;
+        $this->helper = $helper;
         parent::__construct(
             $context
         );
@@ -166,10 +176,12 @@ class Push extends Action implements CsrfAwareActionInterface
             echo 'Klarna Order ID is required';
             return;
         }
+        $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, null, 'Pushing Klarna Order Id: ' . $klarnaOrderId);
         $klarnaOrder = $this->klarnaOrderRepository->getByKlarnaOrderId($klarnaOrderId);
 
         if ($klarnaOrder->getIsAcknowledged()) {
-            echo 'Error: Order ' . $klarnaOrderId . ' has been acknowledged';
+            $message = 'Error: Order ' . $klarnaOrderId . ' has been acknowledged';
+            $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, null, $message);
             return;
         }
 
@@ -190,13 +202,15 @@ class Push extends Action implements CsrfAwareActionInterface
         $quote = $this->cartRepository->get($quoteId);
 
         if (!$quote->getId()) {
-            echo 'Quote is not existed in Magento';
+            $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, null, 'Quote is not existed in Magento');
         }
 
         /**
          *  Update shipping/billing address for quote.
          */
+        $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, null, 'Start Updating Order Address From Pushing Klarna',  'Quote ID: ' . $quote->getId());
         $this->updateOrderAddresses($placedKlarnaOrder, $quote);
+        $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, null, 'End Order Address Update From Pushing Klarna',  'Quote ID: ' . $quote->getId());
 
         if ($klarnaOrder->getOrderId()) {
             $this->acknowledgeOrder($klarnaOrderId, $klarnaOrder->getOrderId(), $quoteId);
@@ -205,12 +219,13 @@ class Push extends Action implements CsrfAwareActionInterface
             try {
                 $order = $this->quoteManagement->submit($quote);
                 $this->acknowledgeOrder($klarnaOrderId, $order->getId(), $quoteId);
-                echo 'Magento order created with ID ' . $order->getIncrementId();
+                $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, $order->getId(), 'Magento order created with ID ' . $order->getIncrementId());
                 return;
             } catch (\Exception $exception) {
                 $message = 'Create order error ('.$quote->getId().')' . $exception->getMessage();
                 $this->orderHelper->cancel($klarnaOrderId, $order ? $order->getId() : false, $message, $exception);
                 $this->logger->critical($message);
+                $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, $order ? $order->getId() : false, $message, $exception->getTraceAsString());
                 return;
             }
         }
@@ -233,13 +248,13 @@ class Push extends Action implements CsrfAwareActionInterface
                 $klarnaOrder->setOrderId($orderId)
                     ->setIsAcknowledged(true)
                     ->save();
-                echo 'Sent ACK successfully with Klarna ID: ' . $klarnaOrderId;
+                $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, $orderId, 'Sent ACK successfully with Klarna ID: ' . $klarnaOrderId);
                 return;
             } catch (\Exception $exception) {
-                echo 'Send ACK error: ' . $exception->getMessage();
+                $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, $orderId, 'Send ACK error: ' . $exception->getMessage(), $exception->getTraceAsString());
             }
         } else {
-            echo 'Something went wrong when sending ACK';
+            $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, $orderId, 'Something went wrong when sending ACK');
         }
         return;
     }

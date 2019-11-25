@@ -79,8 +79,14 @@ class Email extends AbstractHelper
      */
     public function sendOrderCancelEmail($klarnaOrderId, $magentoOrderId = '', $message = '', Exception $exception = null)
     {
+        $adminEmail = $this->scopeConfig->getValue(self::XML_PATH_RECIPIENT_EMAIL, ScopeInterface::SCOPE_STORE);
+
+        if(empty($adminEmail)){
+            return $this;
+        }
+
         try{
-            $this->appState->emulateAreaCode(Area::AREA_FRONTEND, function() use ($klarnaOrderId, $magentoOrderId, $message, $exception){
+            $this->appState->emulateAreaCode(Area::AREA_FRONTEND, function() use ($klarnaOrderId, $magentoOrderId, $message, $exception, $adminEmail){
                 $this->inlineTranslation->suspend();
                 $this->transportBuilder
                     ->setTemplateIdentifier(self::EMAIL_TEMPLATE_IDENTIFIER)
@@ -95,7 +101,7 @@ class Email extends AbstractHelper
                         'traceString' => $exception ? $exception->getTraceAsString() : ''
                     ])
                     ->setFrom($this->scopeConfig->getValue(self::XML_PATH_SENDER_EMAIL, ScopeInterface::SCOPE_STORE))
-                    ->addTo($this->scopeConfig->getValue(self::XML_PATH_RECIPIENT_EMAIL, ScopeInterface::SCOPE_STORE));
+                    ->addTo($adminEmail);
                 $transport = $this->transportBuilder->getTransport();
                 $transport->sendMessage();
                 $this->inlineTranslation->resume();
