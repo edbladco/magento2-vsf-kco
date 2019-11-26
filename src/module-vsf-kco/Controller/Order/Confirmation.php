@@ -18,9 +18,12 @@ use Magento\Quote\Model\QuoteManagement;
 use Magento\Store\Model\ScopeInterface;
 use Magento\Store\Model\StoreManagerInterface;
 use Psr\Log\LoggerInterface;
+use Kodbruket\VsfKco\Helper\Order as OrderHelper;
+use Kodbruket\VsfKco\Helper\Data as VsfKcoHelper;
 
 class Confirmation extends Action implements CsrfAwareActionInterface
 {
+    const EVENT_NAME = 'Confirmation';
 
     /**
      * @var LoggerInterface
@@ -69,6 +72,21 @@ class Confirmation extends Action implements CsrfAwareActionInterface
     private $scopeConfig;
 
     /**
+     * @var ConfigHelper
+     */
+    private $configHelper;
+
+    /**
+     * @var OrderHelper
+     */
+    private $orderHelper;
+
+    /**
+     * @var VsfKcoHelper
+     */
+    private $helper;
+
+    /**
      * Push constructor.
      * @param Context $context
      * @param LoggerInterface $logger
@@ -78,6 +96,11 @@ class Confirmation extends Action implements CsrfAwareActionInterface
      * @param CartRepositoryInterface $cartRepository
      * @param Ordermanagement $orderManagement
      * @param StoreManagerInterface $storeManager
+     * @param QuoteIdMaskFactory $quoteIdMaskFactory
+     * @param ScopeConfigInterface $scopeConfig
+     * @param ConfigHelper $configHelper
+     * @param OrderHelper $orderHelper
+     * @param VsfKcoHelper $helper
      */
 
     public function __construct(
@@ -91,7 +114,9 @@ class Confirmation extends Action implements CsrfAwareActionInterface
         StoreManagerInterface $storeManager,
         QuoteIdMaskFactory $quoteIdMaskFactory,
         ScopeConfigInterface $scopeConfig,
-        ConfigHelper $helper
+        ConfigHelper $configHelper,
+        OrderHelper $orderHelper,
+        VsfKcoHelper $helper
     ) {
         $this->logger = $logger;
         $this->klarnaOrderFactory = $klarnaOrderFactory;
@@ -102,6 +127,8 @@ class Confirmation extends Action implements CsrfAwareActionInterface
         $this->storeManager = $storeManager;
         $this->quoteIdMaskFactory = $quoteIdMaskFactory;
         $this->scopeConfig = $scopeConfig;
+        $this->configHelper = $configHelper;
+        $this->orderHelper = $orderHelper;
         $this->helper = $helper;
 
         parent::__construct(
@@ -119,17 +146,20 @@ class Confirmation extends Action implements CsrfAwareActionInterface
         }
 
         $this->logger->info('Confirmation for Klarna order ID: ' . $klarnaOrderId);
+        $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, null, 'Confirmation for Klarna order ID: ' . $klarnaOrderId);
 
         $store = $this->storeManager->getStore();
         $klarnaOrder = $this->klarnaOrderRepository->getByKlarnaOrderId($klarnaOrderId);
 
         if ($klarnaOrder->getOrderId()) {
             $this->logger->info('Order already exists in Magento for Klarna order ID: ' . $klarnaOrder->getOrderId());
+            $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, $klarnaOrder->getOrderId(), 'Order already exists in Magento for Klarna order ID: ' . $klarnaOrder->getOrderId());
             return;
         }
 
         if ($klarnaOrder->getIsAcknowledged()) {
             $this->logger->info('Klarna order ID ' . $klarnaOrderId . ' has already been acknowledged.');
+            $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, null, 'Klarna order ID ' . $klarnaOrderId . ' has already been acknowledged.');
             return;
         }
 
@@ -144,9 +174,9 @@ class Confirmation extends Action implements CsrfAwareActionInterface
         $quote = $this->cartRepository->get($quoteId);
 
         $store = $quote->getStoreId();
-        $user = $this->helper->getApiConfig('merchant_id', $store);
-        $password = $this->helper->getApiConfig('shared_secret', $store);
-        $testMode = $this->helper->isApiConfigFlag('test_mode', $store);
+        $user = $this->configHelper->getApiConfig('merchant_id', $store);
+        $password = $this->configHelper->getApiConfig('shared_secret', $store);
+        $testMode = $this->configHelper->isApiConfigFlag('test_mode', $store);
 
         if ($testMode) {
             $url = 'https://api.playground.klarna.com/checkout/v3/orders/';
@@ -165,6 +195,9 @@ class Confirmation extends Action implements CsrfAwareActionInterface
             false,
             $context
         );
+
+        $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, null, "Klarna API Call: " . $url, $result);
+
         $kco = json_decode($result, true);
 
         if ($shippingMethod = $kco['selected_shipping_option']) {
@@ -188,11 +221,14 @@ class Confirmation extends Action implements CsrfAwareActionInterface
                 $this->logger->info('Magento order created with ID ' . $order->getIncrementId());
                 $successUrl = $this->scopeConfig->getValue('klarna/vsf/successful_link', ScopeInterface::SCOPE_STORES, $store);
                 $resultRedirect->setUrl($successUrl.'?sid='.$klarnaOrderId);
+                $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, $klarnaOrder->getOrderId(), 'Magento order created with ID ' . $order->getIncrementId(), 'Redirect Url: '. $successUrl.'?sid='.$klarnaOrderId);
                 return $resultRedirect;
 
             } catch (\Exception $exception) {
-                $this->logger->critical('Create order error' . $exception->getMessage());
-                $this->orderManagement->cancel($klarnaOrderId);
+                $message = 'Create order error ('.$quote->getId().')' . $exception->getMessage();
+                $this->orderHelper->cancel($klarnaOrderId, $order ? $order->getId() : false, $message, $exception);
+                $this->logger->critical($message);
+                $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrder, $order ? $order->getId()  : false, $message, $exception->getTraceAsString());
             }
         }
 
@@ -204,7 +240,7 @@ class Confirmation extends Action implements CsrfAwareActionInterface
 
     /**
      * Create CSRF validation exception
-     * 
+     *
      * @param RequestInterface $request
      *
      * @return InvalidRequestException|null
@@ -216,7 +252,7 @@ class Confirmation extends Action implements CsrfAwareActionInterface
 
     /**
      * Validate for CSRF
-     * 
+     *
      * @param RequestInterface $request
      *
      * @return bool|null

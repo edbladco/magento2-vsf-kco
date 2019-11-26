@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Store:etc/config.xsd">
+    <default>
+        <klarna>
+            <cancel>
+                <allow>1</allow>
+                <failing_order_status>canceled</failing_order_status>
+                <send_mail>0</send_mail>
+                <report_email></report_email>
+            </cancel>
+        </klarna>
+    </default>
+</config>

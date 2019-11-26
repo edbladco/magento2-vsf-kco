@@ -10,6 +10,21 @@
         </arguments>
     </virtualType>
 
+    <type name="Magento\Framework\View\Element\UiComponent\DataProvider\CollectionFactory">
+        <arguments>
+            <argument name="collections" xsi:type="array">
+                <item name="kodbruket_vsfkco_event_listing_data_source" xsi:type="string">Kodbruket\VsfKco\Model\ResourceModel\Event\Grid\Collection</item>
+            </argument>
+        </arguments>
+    </type>
+
+    <virtualType name="Kodbruket\VsfKco\Model\ResourceModel\Event\Grid\Collection" type="Magento\Framework\View\Element\UiComponent\DataProvider\SearchResult">
+        <arguments>
+            <argument name="mainTable" xsi:type="string">vsf_kco_events</argument>
+            <argument name="resourceModel" xsi:type="string">Kodbruket\VsfKco\Model\ResourceModel\Event</argument>
+        </arguments>
+    </virtualType>
+
     <preference
         for="Klarna\Kp\Gateway\Command\Authorize"
         type="Kodbruket\VsfKco\Gateway\Command\Authorize"
@@ -45,6 +60,12 @@
     </type>
 
     <type name="Kodbruket\VsfKco\Controller\Order\Push">
+        <arguments>
+            <argument name="logger" xsi:type="object">klarnaCallbackLogger</argument>
+        </arguments>
+    </type>
+
+    <type name="Kodbruket\VsfKco\Helper\Email">
         <arguments>
             <argument name="logger" xsi:type="object">klarnaCallbackLogger</argument>
         </arguments>

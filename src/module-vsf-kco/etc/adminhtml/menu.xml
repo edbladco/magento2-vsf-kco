@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Backend:etc/menu.xsd">
+    <menu>
+        <add id="Kodbruket_VsfKco::vsfkco" title="VSF KCO" translate="title" module="Kodbruket_VsfKco" sortOrder="50" resource="Kodbruket_VsfKco::vsfkco" parent="Magento_Backend::stores"/>
+        <add id="Kodbruket_VsfKco::vsfkco/event" title="Klarna Events" translate="title" module="Kodbruket_VsfKco" sortOrder="51" resource="Kodbruket_VsfKco::vsfkco" parent="Kodbruket_VsfKco::vsfkco" action="vsfkco/event"/>
+    </menu>
+</config>
