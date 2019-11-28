@@ -196,7 +196,7 @@ class Push extends Action implements CsrfAwareActionInterface
         $quoteId = $quoteIdMask->getQuoteId();
 
         if( (int)$quoteId == 0 && ctype_digit(strval($maskedId)) ){
-            $quoteId = (int)$maskedId;
+            $quoteId = (int) $maskedId;
         }
 
         $quote = $this->cartRepository->get($quoteId);
@@ -212,22 +212,24 @@ class Push extends Action implements CsrfAwareActionInterface
         $this->updateOrderAddresses($placedKlarnaOrder, $quote);
         $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, null, 'End Order Address Update From Pushing Klarna',  'Quote ID: ' . $quote->getId());
 
-        if ($klarnaOrder->getOrderId()) {
-            $this->acknowledgeOrder($klarnaOrderId, $klarnaOrder->getOrderId(), $quoteId);
+        /**
+         * Create order and acknowledged
+         */
+        try {
+             $order = $this->quoteManagement->submit($quote);
+             $orderId = $order->getId();
+             if ($orderId) {
+                $klarnaOrder->setOrderId($orderId)->save();
+             }
+            $this->acknowledgeOrder($klarnaOrderId, $order->getId(), $quoteId);
+            $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, $order->getId(), 'Magento order created in PushController with ID ' . $order->getIncrementId());
             return;
-        } else {
-            try {
-                $order = $this->quoteManagement->submit($quote);
-                $this->acknowledgeOrder($klarnaOrderId, $order->getId(), $quoteId);
-                $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, $order->getId(), 'Magento order created with ID ' . $order->getIncrementId());
-                return;
-            } catch (\Exception $exception) {
-                $message = 'Create order error ('.$quote->getId().')' . $exception->getMessage();
-                $this->orderHelper->cancel($klarnaOrderId, $order ? $order->getId() : false, $message, $exception);
-                $this->logger->critical($message);
-                $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, $order ? $order->getId() : false, $message, $exception->getTraceAsString());
-                return;
-            }
+        } catch (\Exception $exception) {
+            $message = 'Create order error in PushController ('.$quote->getId().')' . $exception->getMessage();
+            $this->orderHelper->cancel($klarnaOrderId, $order ? $order->getId() : false, $message, $exception);
+            $this->logger->critical($message);
+            $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, $order ? $order->getId() : false, $message, $exception->getTraceAsString());
+            return;
         }
         exit;
     }
