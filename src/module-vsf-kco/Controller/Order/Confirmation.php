@@ -217,6 +217,8 @@ class Confirmation extends Action implements CsrfAwareActionInterface
                  * Just redirect, we will handle submit quote in Push Controller
                  * @see Push
                  */
+                $quote->setIsActive(false);
+                $this->cartRepository->save($quote);
                 // $order = $this->quoteManagement->submit($quote);
                 // $orderId = $order->getId();
                 // if ($orderId) {
@@ -225,7 +227,7 @@ class Confirmation extends Action implements CsrfAwareActionInterface
                 // $this->logger->info('Magento order created with ID ' . $order->getIncrementId());
                 $successUrl = $this->scopeConfig->getValue('klarna/vsf/successful_link', ScopeInterface::SCOPE_STORES, $store);
                 $resultRedirect->setUrl($successUrl.'?sid='.$klarnaOrderId);
-                $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, $klarnaOrder->getOrderId(), 'Reached to Confirmation page and redirect successfully ' . false, 'Redirect Url: '. $successUrl.'?sid='.$klarnaOrderId);
+                $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, $klarnaOrder->getOrderId(), 'Reached to Confirmation page, disabled quote and redirect successfully ' . false, 'Redirect Url: '. $successUrl.'?sid='.$klarnaOrderId);
                 return $resultRedirect;
 
             } catch (\Exception $exception) {
