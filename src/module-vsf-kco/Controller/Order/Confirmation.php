@@ -196,7 +196,7 @@ class Confirmation extends Action implements CsrfAwareActionInterface
             $context
         );
 
-        $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, null, "Klarna API Call: " . $url, $result);
+        // $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, null, "Klarna API Call: " . $url, $result);
 
         $kco = json_decode($result, true);
 
