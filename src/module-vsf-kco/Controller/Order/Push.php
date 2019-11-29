@@ -215,6 +215,7 @@ class Push extends Action implements CsrfAwareActionInterface
         /**
          * Create order and acknowledged
          */
+        $order = false;
         try {
              $order = $this->quoteManagement->submit($quote);
              $orderId = $order->getId();
