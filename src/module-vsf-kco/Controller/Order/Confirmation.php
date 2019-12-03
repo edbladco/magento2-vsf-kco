@@ -196,7 +196,7 @@ class Confirmation extends Action implements CsrfAwareActionInterface
             $context
         );
 
-        $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, null, "Klarna API Call: " . $url, $result);
+        // $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, null, "Klarna API Call: " . $url, $result);
 
         $kco = json_decode($result, true);
 
@@ -213,22 +213,28 @@ class Confirmation extends Action implements CsrfAwareActionInterface
 
         if ($quote->getId()) {
             try {
-                $order = $this->quoteManagement->submit($quote);
-                $orderId = $order->getId();
-                if ($orderId) {
-                    $klarnaOrder->setOrderId($orderId)->save();
-                }
-                $this->logger->info('Magento order created with ID ' . $order->getIncrementId());
+                /**
+                 * Just redirect, we will handle submit quote in Push Controller
+                 * @see Push
+                 */
+                $quote->setIsActive(false);
+                $this->cartRepository->save($quote);
+                // $order = $this->quoteManagement->submit($quote);
+                // $orderId = $order->getId();
+                // if ($orderId) {
+                //    $klarnaOrder->setOrderId($orderId)->save();
+                // }
+                // $this->logger->info('Magento order created with ID ' . $order->getIncrementId());
                 $successUrl = $this->scopeConfig->getValue('klarna/vsf/successful_link', ScopeInterface::SCOPE_STORES, $store);
                 $resultRedirect->setUrl($successUrl.'?sid='.$klarnaOrderId);
-                $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, $klarnaOrder->getOrderId(), 'Magento order created with ID ' . $order->getIncrementId(), 'Redirect Url: '. $successUrl.'?sid='.$klarnaOrderId);
+                $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, $klarnaOrder->getOrderId(), 'Reached to Confirmation page, disabled quote and redirect successfully ' . false, 'Redirect Url: '. $successUrl.'?sid='.$klarnaOrderId);
                 return $resultRedirect;
 
             } catch (\Exception $exception) {
-                $message = 'Create order error ('.$quote->getId().')' . $exception->getMessage();
-                $this->orderHelper->cancel($klarnaOrderId, $order ? $order->getId() : false, $message, $exception);
+                $message = 'Redirect in Confirmation error ('.$quote->getId().')' . $exception->getMessage();
+                $this->orderHelper->cancel($klarnaOrderId, false, $message, $exception);
                 $this->logger->critical($message);
-                $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrder, $order ? $order->getId()  : false, $message, $exception->getTraceAsString());
+                $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrder, false, $message, $exception->getTraceAsString());
             }
         }
 
