@@ -2,12 +2,18 @@
 <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Store:etc/config.xsd">
     <default>
         <klarna>
+            <vsf>
+                <create_order_using_queue>1</create_order_using_queue>
+            </vsf>
             <cancel>
                 <allow>1</allow>
                 <failing_order_status>canceled</failing_order_status>
                 <send_mail>0</send_mail>
                 <report_email></report_email>
             </cancel>
+            <tracking>
+                <enable>1</enable>
+            </tracking>
         </klarna>
     </default>
 </config>

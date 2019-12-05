@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework-message-queue:etc/queue.xsd">
+    <broker topic="vsf.kco.klarna.order.create" exchange="magento-db" type="db">
+        <queue name="vsf.kco.klarna.order.create" consumer="vsf_order_creation"
+               consumerInstance="Magento\Framework\MessageQueue\Consumer"
+               handler="Kodbruket\VsfKco\Model\Queue\Consumer::processMessage"/>
+    </broker>
+</config>

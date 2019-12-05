@@ -71,4 +71,5 @@
         </arguments>
     </type>
 
+    <preference for="Kodbruket\VsfKco\Api\Data\Queue\OrderCreationInterface" type="Kodbruket\VsfKco\Model\Queue\Data\OrderCreation"/>
 </config>
