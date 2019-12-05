@@ -37,7 +37,6 @@ class BeforeVsfPullCart
      * @param \Magento\Quote\Model\Quote\Item\Repository $subject
      * @param $cartId
      * @return int
-     * @throws NoSuchEntityException
      * @throws \Magento\Framework\Exception\CouldNotSaveException
      */
     public function beforeGetList(
@@ -47,13 +46,7 @@ class BeforeVsfPullCart
         try {
             $this->quoteRepository->getActive($cartId);
         }catch (NoSuchEntityException $e) {
-            $quote = $this->quoteRepository->get($cartId);
-
-            if ( $quote->getCustomer() && $quote->getCustomer()->getId() ) {
-                $cartId = $this->cartManagement->createEmptyCartForCustomer($quote->getCustomer()->getId());
-            } else {
-                $cartId = $this->cartManagement->createEmptyCart();
-            }
+            $cartId = $this->cartManagement->createEmptyCart();
         }
         return $cartId;
     }
