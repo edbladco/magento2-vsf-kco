@@ -57,7 +57,7 @@ class Address
             'street'        => implode(',', $streetData),
             'postcode'      => $klarnaAddressDto->getPostalCode(),
             'city'          => $klarnaAddressDto->getCity(),
-            'telephone'     => $klarnaAddressDto->getPhone(),
+            'telephone'     => $klarnaAddressDto->getPhone() ?: 0,
             'country_id'    => $country,
             'same_as_other' => $klarnaAddressDto->getSameAsOther() ? 1 : 0
         ];
