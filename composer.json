@@ -14,6 +14,10 @@
     {
       "name": "Andreas Karlsson",
       "email": "andreas@kodbruket.se"
+    },
+    {
+      "name": "Phu Hoang",
+      "email": "phu@kodbruket.se"
     }
   ],
   "version": "1.0.5",
@@ -34,9 +38,10 @@
   "require": {
     "php": ">=7.0.2",
     "magento/framework": ">=101.0.0",
-    "magento/module-store": ">=100.2.0",
-    "magento/module-backend": ">=100.2.0",
-    "magento/magento-composer-installer": "*"
+    "klarna/module-core": "^5.2"
+  },
+  "require-dev": {
+    "phpunit/phpunit": "~6.5.0"
   },
   "replace": {
     "kodbruket/module-vsf-kco": "self.version"
@@ -48,6 +53,12 @@
     "psr-4": {
       "Kodbruket\\VsfKco\\": "src/module-vsf-kco"
     }
+  },
+  "scripts": {
+    "test": [
+      "Composer\\Config::disableProcessTimeout",
+      "vendor/bin/phpunit -c src/module-vsf-kco/Test/phpunit.xml"
+    ]
   },
   "minimum-stability": "alpha",
   "prefer-stable": true

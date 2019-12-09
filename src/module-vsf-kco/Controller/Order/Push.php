@@ -198,7 +198,7 @@ class Push extends Action implements CsrfAwareActionInterface
          * Create order and acknowledged
          */
         $this->helper->submitQuote($klarnaOrderId, $quote);
-        exit;
+        return;
     }
 
     /**
