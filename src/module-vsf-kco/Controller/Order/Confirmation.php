@@ -140,23 +140,23 @@ class Confirmation extends Action implements CsrfAwareActionInterface
     {
         $klarnaOrderId = $this->getRequest()->getParam('id');
 
-        $this->logger->info('Confirmation for Klarna order ID: ' . $klarnaOrderId);
-
-        $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, null, 'Confirmation for Klarna order ID: ' . $klarnaOrderId);
-
         $store = $this->storeManager->getStore();
 
         $resultRedirect = $this->resultRedirectFactory->create();
 
-        $successUrl = $this->scopeConfig->getValue('klarna/vsf/successful_link', ScopeInterface::SCOPE_STORES, $store);
-
         $failedUrl = $this->scopeConfig->getValue('klarna/vsf/failed_link', ScopeInterface::SCOPE_STORES, $store);
+
+        $successUrl = $this->scopeConfig->getValue('klarna/vsf/successful_link', ScopeInterface::SCOPE_STORES, $store);
 
         if (!$klarnaOrderId) {
             $this->logger->info('Klarna order ID is required for confirmation.');
             $resultRedirect->setUrl($failedUrl);
             return $resultRedirect;
         }
+
+        $this->logger->info('Confirmation for Klarna order ID: ' . $klarnaOrderId);
+
+        $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, null, 'Confirmation for Klarna order ID: ' . $klarnaOrderId);
 
         $klarnaOrder = $this->klarnaOrderRepository->getByKlarnaOrderId($klarnaOrderId);
 
