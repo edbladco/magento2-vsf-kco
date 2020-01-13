@@ -6,6 +6,7 @@ use Magento\Framework\App\Config\ScopeConfigInterface;
 use Magento\Framework\App\Helper\AbstractHelper;
 use Magento\Framework\App\Helper\Context;
 use Magento\Framework\App\ResourceConnection;
+use Magento\Framework\ObjectManagerInterface;
 use Magento\Sales\Api\OrderRepositoryInterface;
 use Klarna\Ordermanagement\Model\Api\Ordermanagement;
 use Kodbruket\VsfKco\Helper\Email as EmailHelper;
@@ -19,6 +20,11 @@ class Order extends AbstractHelper
      * @var ResourceConnection
      */
     private $_resource;
+
+    /**
+     * @var ObjectManagerInterface
+     */
+    protected $objectmanager;
 
     /**
      * @var Ordermanagement
@@ -43,7 +49,7 @@ class Order extends AbstractHelper
     public function __construct(
         Context $context,
         ResourceConnection $resource,
-        Ordermanagement $ordermanagement,
+        ObjectManagerInterface $objectmanager,
         OrderRepositoryInterface $orderRepository,
         ScopeConfigInterface $scopeConfig,
         EmailHelper $emailHelper
@@ -51,10 +57,19 @@ class Order extends AbstractHelper
     {
         parent::__construct($context);
         $this->_resource = $resource;
-        $this->ordermanagement = $ordermanagement;
+        $this->objectmanager = $objectmanager;
         $this->orderRepository = $orderRepository;
         $this->scopeConfig = $scopeConfig;
         $this->emailHelper = $emailHelper;
+    }
+
+    public function getOrderManagement()
+    {
+        if(!$this->orderManagement) {
+            $this->orderManagement = $this->objectmanager->create(Ordermanagement::class);
+        }
+
+        return $this->orderManagement;
     }
 
     /**
@@ -71,7 +86,10 @@ class Order extends AbstractHelper
             $this->_cancelMagentoOrder($orderId);
             // Email to admin
             $this->emailHelper->sendOrderCancelEmail($klarnaOrderId, $orderId, $message, $exception);
+            return true;
         }
+
+        return false;
     }
 
     /**
@@ -84,9 +102,9 @@ class Order extends AbstractHelper
         if(!$klarnaOrderId){
             return false;
         }
-
-        $response = $this->orderManagement->cancel($klarnaOrderId);
-        return $response && (bool)$response->is_successful;
+        
+        $response = $this->getOrderManagement()->cancel($klarnaOrderId);
+        return $response && (bool)$response->getIsSuccessful();
     }
 
     /**
