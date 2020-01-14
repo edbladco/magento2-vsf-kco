@@ -38,6 +38,12 @@
                             <config_path>klarna/vsf/carrier_mapping</config_path>
                             <comment>Mapping Shipping Method with Klarna Shipping Service Carrier.</comment>
                         </field>
+                        <field id="create_order_using_queue" sortOrder="50" showInDefault="1" showInWebsite="1" showInStore="1" translate="label" type="select">
+                            <label>Create Magento order using queue ?</label>
+                            <config_path>klarna/vsf/create_order_using_queue</config_path>
+                            <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                            <comment>Select YES if you want to use Magento queue to create order in Klarna callback.</comment>
+                        </field>
                     </group>
                     <group id="cancel" type="text" sortOrder="103" showInDefault="1" showInWebsite="1"
                            showInStore="1"
@@ -67,6 +73,15 @@
                             <depends>
                                 <field id="send_mail">1</field>
                             </depends>
+                        </field>
+                    </group>
+                    <group id="tracking" type="text" sortOrder="203" showInDefault="1" showInWebsite="1" showInStore="1" translate="label">
+                        <label>Klarna Event Tracking</label>
+                        <field id="enable" sortOrder="50" showInDefault="1" showInWebsite="1" showInStore="1" translate="label" type="select">
+                            <label>Logs Klarna Push &amp; Confirmation Events?</label>
+                            <config_path>klarna/tracking/enable</config_path>
+                            <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                            <comment>Select YES if you want to log Klarna Push &amp; Confirmation events into database.</comment>
                         </field>
                     </group>
                 </group>

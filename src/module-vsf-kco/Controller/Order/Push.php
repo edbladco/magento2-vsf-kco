@@ -13,7 +13,6 @@ use Magento\Framework\App\RequestInterface;
 use Magento\Framework\App\Request\InvalidRequestException;
 use Magento\Quote\Api\CartRepositoryInterface;
 use Magento\Quote\Model\QuoteIdMaskFactory;
-use Magento\Quote\Model\QuoteManagement;
 use Magento\Store\Model\StoreManagerInterface;
 use Magento\Sales\Api\OrderRepositoryInterface as MageOrderRepositoryInterface;
 use Psr\Log\LoggerInterface;
@@ -22,7 +21,6 @@ use Magento\Quote\Api\Data\CartInterface;
 use Kodbruket\VsfKco\Model\Klarna\DataTransform\Request\Address as AddressDataTransform;
 use Magento\Customer\Api\CustomerRepositoryInterface;
 use Magento\Customer\Model\CustomerFactory;
-use Kodbruket\VsfKco\Helper\Order as OrderHelper;
 use Kodbruket\VsfKco\Helper\Data as VsfKcoHelper;
 
 /**
@@ -47,11 +45,6 @@ class Push extends Action implements CsrfAwareActionInterface
      * @var OrderRepositoryInterface
      */
     private $klarnaOrderRepository;
-
-    /**
-     * @var QuoteManagement
-     */
-    private $quoteManagement;
 
     /**
      * @var CartRepositoryInterface
@@ -94,11 +87,6 @@ class Push extends Action implements CsrfAwareActionInterface
     private $customerFactory;
 
     /**
-     * @var OrderHelper
-     */
-    private $orderHelper;
-
-    /**
      * @var VsfKcoHelper
      */
     private $helper;
@@ -109,7 +97,6 @@ class Push extends Action implements CsrfAwareActionInterface
      * @param LoggerInterface $logger
      * @param OrderFactory $klarnaOrderFactory
      * @param OrderRepositoryInterface $klarnaOrderRepository
-     * @param QuoteManagement $quoteManagement
      * @param CartRepositoryInterface $cartRepository
      * @param Ordermanagement $orderManagement
      * @param StoreManagerInterface $storeManager
@@ -118,7 +105,6 @@ class Push extends Action implements CsrfAwareActionInterface
      * @param AddressDataTransform $addressDataTransform
      * @param CustomerRepositoryInterface $customerRepository
      * @param CustomerFactory $customerFactory
-     * @param OrderHelper $orderHelper
      * @param EmailHelper $emailHelper
      * @param VsfKcoHelper $helper
      */
@@ -127,7 +113,6 @@ class Push extends Action implements CsrfAwareActionInterface
         LoggerInterface $logger,
         OrderFactory $klarnaOrderFactory,
         OrderRepositoryInterface $klarnaOrderRepository,
-        QuoteManagement $quoteManagement,
         CartRepositoryInterface $cartRepository,
         Ordermanagement $orderManagement,
         StoreManagerInterface $storeManager,
@@ -136,13 +121,11 @@ class Push extends Action implements CsrfAwareActionInterface
         AddressDataTransform $addressDataTransform,
         CustomerRepositoryInterface $customerRepository,
         CustomerFactory $customerFactory,
-        OrderHelper $orderHelper,
         VsfKcoHelper $helper
     ) {
         $this->logger = $logger;
         $this->klarnaOrderFactory = $klarnaOrderFactory;
         $this->klarnaOrderRepository = $klarnaOrderRepository;
-        $this->quoteManagement = $quoteManagement;
         $this->cartRepository = $cartRepository;
         $this->orderManagement = $orderManagement;
         $this->storeManager = $storeManager;
@@ -151,7 +134,6 @@ class Push extends Action implements CsrfAwareActionInterface
         $this->addressDataTransform = $addressDataTransform;
         $this->customerRepository   = $customerRepository;
         $this->customerFactory      = $customerFactory;
-        $this->orderHelper = $orderHelper;
         $this->helper = $helper;
         parent::__construct(
             $context
@@ -196,7 +178,7 @@ class Push extends Action implements CsrfAwareActionInterface
         $quoteId = $quoteIdMask->getQuoteId();
 
         if( (int)$quoteId == 0 && ctype_digit(strval($maskedId)) ){
-            $quoteId = (int)$maskedId;
+            $quoteId = (int) $maskedId;
         }
 
         $quote = $this->cartRepository->get($quoteId);
@@ -212,51 +194,11 @@ class Push extends Action implements CsrfAwareActionInterface
         $this->updateOrderAddresses($placedKlarnaOrder, $quote);
         $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, null, 'End Order Address Update From Pushing Klarna',  'Quote ID: ' . $quote->getId());
 
-        if ($klarnaOrder->getOrderId()) {
-            $this->acknowledgeOrder($klarnaOrderId, $klarnaOrder->getOrderId(), $quoteId);
-            return;
-        } else {
-            try {
-                $order = $this->quoteManagement->submit($quote);
-                $this->acknowledgeOrder($klarnaOrderId, $order->getId(), $quoteId);
-                $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, $order->getId(), 'Magento order created with ID ' . $order->getIncrementId());
-                return;
-            } catch (\Exception $exception) {
-                $message = 'Create order error ('.$quote->getId().')' . $exception->getMessage();
-                $this->orderHelper->cancel($klarnaOrderId, $order ? $order->getId() : false, $message, $exception);
-                $this->logger->critical($message);
-                $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, $order ? $order->getId() : false, $message, $exception->getTraceAsString());
-                return;
-            }
-        }
+        /**
+         * Create order and acknowledged
+         */
+        $this->helper->submitQuote($klarnaOrderId, $quote);
         exit;
-    }
-
-    /**
-     * @param $klarnaOrderId
-     * @param $orderId
-     * @param $quoteId
-     */
-    private function acknowledgeOrder($klarnaOrderId, $orderId, $quoteId)
-    {
-        if ($klarnaOrderId && $orderId && $quoteId) {
-            try {
-                $mageOrder = $this->mageOrderRepository->get($orderId);
-                $klarnaOrder = $this->klarnaOrderRepository->getByKlarnaOrderId($klarnaOrderId);
-                $this->orderManagement->updateMerchantReferences($klarnaOrderId, $mageOrder->getIncrementId(), $quoteId);
-                $this->orderManagement->acknowledgeOrder($klarnaOrderId);
-                $klarnaOrder->setOrderId($orderId)
-                    ->setIsAcknowledged(true)
-                    ->save();
-                $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, $orderId, 'Sent ACK successfully with Klarna ID: ' . $klarnaOrderId);
-                return;
-            } catch (\Exception $exception) {
-                $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, $orderId, 'Send ACK error: ' . $exception->getMessage(), $exception->getTraceAsString());
-            }
-        } else {
-            $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, $orderId, 'Something went wrong when sending ACK');
-        }
-        return;
     }
 
     /**

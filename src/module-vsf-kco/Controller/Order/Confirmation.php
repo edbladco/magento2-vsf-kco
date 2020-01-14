@@ -140,42 +140,61 @@ class Confirmation extends Action implements CsrfAwareActionInterface
     {
         $klarnaOrderId = $this->getRequest()->getParam('id');
 
+        $store = $this->storeManager->getStore();
+
+        $resultRedirect = $this->resultRedirectFactory->create();
+
+        $failedUrl = $this->scopeConfig->getValue('klarna/vsf/failed_link', ScopeInterface::SCOPE_STORES, $store);
+
+        $successUrl = $this->scopeConfig->getValue('klarna/vsf/successful_link', ScopeInterface::SCOPE_STORES, $store);
+
         if (!$klarnaOrderId) {
             $this->logger->info('Klarna order ID is required for confirmation.');
-            return;
+            $resultRedirect->setUrl($failedUrl);
+            return $resultRedirect;
         }
 
         $this->logger->info('Confirmation for Klarna order ID: ' . $klarnaOrderId);
+
         $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, null, 'Confirmation for Klarna order ID: ' . $klarnaOrderId);
 
-        $store = $this->storeManager->getStore();
         $klarnaOrder = $this->klarnaOrderRepository->getByKlarnaOrderId($klarnaOrderId);
 
         if ($klarnaOrder->getOrderId()) {
             $this->logger->info('Order already exists in Magento for Klarna order ID: ' . $klarnaOrder->getOrderId());
             $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, $klarnaOrder->getOrderId(), 'Order already exists in Magento for Klarna order ID: ' . $klarnaOrder->getOrderId());
-            return;
+            $resultRedirect->setUrl($successUrl.'?sid='.$klarnaOrderId);
+            return $resultRedirect;
         }
 
         if ($klarnaOrder->getIsAcknowledged()) {
             $this->logger->info('Klarna order ID ' . $klarnaOrderId . ' has already been acknowledged.');
             $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, null, 'Klarna order ID ' . $klarnaOrderId . ' has already been acknowledged.');
-            return;
+            $resultRedirect->setUrl($successUrl.'?sid='.$klarnaOrderId);
+            return $resultRedirect;
         }
 
         $this->orderManagement->resetForStore($store, ConfigHelper::KCO_METHOD_CODE);
+
         $placedKlarnaOrder = $this->orderManagement->getPlacedKlarnaOrder($klarnaOrderId);
+
         $maskedId = $placedKlarnaOrder->getDataByKey('merchant_reference2');
+
         $quoteIdMask = $this->quoteIdMaskFactory->create()->load($maskedId, 'masked_id');
+
         $quoteId = $quoteIdMask->getQuoteId();
+
         if( (int)$quoteId==0 && ctype_digit(strval($maskedId))){
             $quoteId = (int)$maskedId;
         }
         $quote = $this->cartRepository->get($quoteId);
 
         $store = $quote->getStoreId();
+
         $user = $this->configHelper->getApiConfig('merchant_id', $store);
+
         $password = $this->configHelper->getApiConfig('shared_secret', $store);
+
         $testMode = $this->configHelper->isApiConfigFlag('test_mode', $store);
 
         if ($testMode) {
@@ -185,6 +204,7 @@ class Confirmation extends Action implements CsrfAwareActionInterface
         }
 
         $auth = base64_encode(sprintf("%s:%s", $user, $password));
+
         $context = stream_context_create([
             "http" => [
                 "header" => "Authorization: Basic $auth"
@@ -196,7 +216,7 @@ class Confirmation extends Action implements CsrfAwareActionInterface
             $context
         );
 
-        $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, null, "Klarna API Call: " . $url, $result);
+        // $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, null, "Klarna API Call: " . $url, $result);
 
         $kco = json_decode($result, true);
 
@@ -209,30 +229,26 @@ class Confirmation extends Action implements CsrfAwareActionInterface
             }
         }
 
-        $resultRedirect = $this->resultRedirectFactory->create();
-
         if ($quote->getId()) {
             try {
-                $order = $this->quoteManagement->submit($quote);
-                $orderId = $order->getId();
-                if ($orderId) {
-                    $klarnaOrder->setOrderId($orderId)->save();
-                }
-                $this->logger->info('Magento order created with ID ' . $order->getIncrementId());
-                $successUrl = $this->scopeConfig->getValue('klarna/vsf/successful_link', ScopeInterface::SCOPE_STORES, $store);
+                /**
+                 * Just redirect, we will handle submit quote in Push Controller
+                 * @see Push
+                 */
+                $quote->setIsActive(false);
+                $this->cartRepository->save($quote);
                 $resultRedirect->setUrl($successUrl.'?sid='.$klarnaOrderId);
-                $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, $klarnaOrder->getOrderId(), 'Magento order created with ID ' . $order->getIncrementId(), 'Redirect Url: '. $successUrl.'?sid='.$klarnaOrderId);
+                $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, $klarnaOrder->getOrderId(), 'Reached to Confirmation page, disabled quote and redirect successfully ' , 'Redirect Url: '. $successUrl.'?sid='.$klarnaOrderId);
                 return $resultRedirect;
 
             } catch (\Exception $exception) {
-                $message = 'Create order error ('.$quote->getId().')' . $exception->getMessage();
-                $this->orderHelper->cancel($klarnaOrderId, $order ? $order->getId() : false, $message, $exception);
+                $message = 'Redirect in Confirmation error ('.$quote->getId().')' . $exception->getMessage();
+                $this->orderHelper->cancel($klarnaOrderId, false, $message, $exception);
                 $this->logger->critical($message);
-                $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrder, $order ? $order->getId()  : false, $message, $exception->getTraceAsString());
+                $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrder, false, $message, $exception->getTraceAsString());
             }
         }
 
-        $failedUrl = $this->scopeConfig->getValue('klarna/vsf/failed_link', ScopeInterface::SCOPE_STORES, $store);
         $resultRedirect->setUrl($failedUrl);
 
         return $resultRedirect;
