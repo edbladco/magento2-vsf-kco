@@ -237,6 +237,13 @@ class Confirmation extends Action implements CsrfAwareActionInterface
                  */
                 $quote->setIsActive(false);
                 $this->cartRepository->save($quote);
+                // $order = $this->quoteManagement->submit($quote);
+                // $orderId = $order->getId();
+                // if ($orderId) {
+                //    $klarnaOrder->setOrderId($orderId)->save();
+                // }
+                // $this->logger->info('Magento order created with ID ' . $order->getIncrementId());
+                $successUrl = $this->scopeConfig->getValue('klarna/vsf/successful_link', ScopeInterface::SCOPE_STORES, $store);
                 $resultRedirect->setUrl($successUrl.'?sid='.$klarnaOrderId);
                 $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, $klarnaOrder->getOrderId(), 'Reached to Confirmation page, disabled quote and redirect successfully ' , 'Redirect Url: '. $successUrl.'?sid='.$klarnaOrderId);
                 return $resultRedirect;
