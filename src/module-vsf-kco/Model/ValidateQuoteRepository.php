@@ -219,16 +219,17 @@ class ValidateQuoteRepository implements \Kodbruket\VsfKco\Api\ValidateQuoteInte
 
                     $isUpdatedKlarna = true;
 
-                    $this->logger->info('Update Klarna Order From M2 and update shipping method for quote - klarnaOrderId: '.$klarnaOrderId. ' - M2 quote Id: '.$quoteM2->getId());
+                    $this->logger->info('Update Klarna Order From M2 - klarnaOrderId: '.$klarnaOrderId. ' - M2 quote Id: '.$quoteM2->getId());
 
-                } else {
-                    /** @todo: Pull Klarna shipping info to m2 quote */
-                    $this->logger->info('Update M2 Quote from Klarna Order - klarnaOrderId: '.$klarnaOrderId.' - M2 quote Id: '.$quoteM2->getId());
-
-                    $isUpdatedM2 = true;
                 }
+
                 /** Update shipping method for quote */
                 $this->updatedM2QuoteFromKlarnaOrder( $quoteM2, $klarnaOrder );
+
+                $this->logger->info('Update M2 Quote from Klarna Order - klarnaOrderId: '.$klarnaOrderId.' - M2 quote Id: '.$quoteM2->getId());
+
+                $isUpdatedM2 = true;
+
             }catch (\Exception $e) {
                 $response = [
                     'error' => true,
