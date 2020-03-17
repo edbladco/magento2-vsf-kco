@@ -16,12 +16,12 @@ use Magento\Framework\App\Action\Context;
 use Magento\Framework\App\Config\ScopeConfigInterface;
 use Magento\Framework\App\Request\InvalidRequestException;
 use Magento\Framework\Controller\ResultFactory;
+use Magento\Framework\Exception\NoSuchEntityException;
 use Magento\Quote\Api\CartRepositoryInterface;
 use Magento\Quote\Api\Data\CartInterface;
 use Magento\Quote\Model\QuoteIdMask;
 use Magento\Quote\Model\QuoteIdMaskFactory;
 use Magento\Quote\Model\QuoteRepository;
-use Magento\Framework\Exception\NoSuchEntityException;
 
 use Psr\Log\LoggerInterface;
 
