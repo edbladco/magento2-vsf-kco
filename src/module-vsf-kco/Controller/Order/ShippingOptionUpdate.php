@@ -170,7 +170,12 @@ class ShippingOptionUpdate extends Action implements CsrfAwareActionInterface
             }
 
             if (isset($shippingMethodCode)) {
-                $shippingMethodCode = $this->convertShippingMethodCode($shippingMethodCode);
+                $fallbacks = ['varubrev', 'servicepoint', 'upsstandard', 'upsexpress'];
+                if (in_array($shippingMethodCode, $fallbacks)) {
+                    $shippingMethodCode = $this->convertShippingMethodCode($shippingMethodCode);
+                } else {
+                    $shippingMethodCode = 'udc_' . $shippingMethod['id'];
+                }
                 $quote->getShippingAddress()
                     ->setShippingMethod($shippingMethodCode)
                     ->setShippingDescription($shippingDescription)

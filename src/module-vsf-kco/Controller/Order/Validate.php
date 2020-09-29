@@ -108,6 +108,17 @@ class Validate extends Action implements CsrfAwareActionInterface
     public function execute()
     {
         $this->logger->info('Validate: start');
+/*
+        if ($this->getRequest('andreas')) {
+            $quote = $this->cartRepository->get('2430262');
+            var_dump($quote->getHasError());
+echo $quote->getId();
+echo $quote->hasItems();
+var_dump($quote->getErrors());
+var_dump($quote->getMessages());
+            die;
+        }
+*/
         if (!$this->getRequest()->isPost()) {
             $this->logger->info('Validate: No post request');
             return $this->setValidateFailedResponse();
@@ -173,7 +184,12 @@ class Validate extends Action implements CsrfAwareActionInterface
              *  set selectedShippingMethod from Klarna to Magento2
              */
             if (isset($shippingMethodCode)) {
-                $shippingMethodCode = $this->convertShippingMethodCode($shippingMethodCode);
+                $fallbacks = ['varubrev', 'servicepoint', 'upsstandard', 'upsexpress'];
+                if (in_array($shippingMethodCode, $fallbacks)) {
+                    $shippingMethodCode = $this->convertShippingMethodCode($shippingMethodCode);
+                } else {
+                    $shippingMethodCode = 'udc_' . $shippingMethod['id'];
+                }
                 $quote->getShippingAddress()
                     ->setShippingMethod($shippingMethodCode)
                     ->setShippingDescription($shippingDescription)

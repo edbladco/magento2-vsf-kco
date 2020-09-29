@@ -152,6 +152,8 @@ class AddressUpdate extends Action implements CsrfAwareActionInterface
 
         $this->updateOrderAddresses($data, $quote);
 
+$this->logger->info( var_export($data->getData('selected_shipping_option'), true) );
+
         try {
             if ($shippingMethod = $data->getData('selected_shipping_option')) {
                 $shippingMethodString = json_encode($shippingMethod, JSON_UNESCAPED_UNICODE);
@@ -171,7 +173,12 @@ class AddressUpdate extends Action implements CsrfAwareActionInterface
                 }
             }
             if (isset($shippingMethodCode)) {
-                $shippingMethodCode = $this->convertShippingMethodCode($shippingMethodCode);
+                $fallbacks = ['varubrev', 'servicepoint', 'upsstandard', 'upsexpress'];
+                if (in_array($shippingMethodCode, $fallbacks)) {
+                    $shippingMethodCode = $this->convertShippingMethodCode($shippingMethodCode);
+                } else {
+                    $shippingMethodCode = 'udc_' . $shippingMethod['id'];
+                }
                 $quote->getShippingAddress()
                     ->setShippingMethod($shippingMethodCode)
                     ->setShippingDescription($shippingDescription)

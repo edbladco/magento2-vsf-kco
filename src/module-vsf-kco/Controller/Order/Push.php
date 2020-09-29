@@ -24,6 +24,8 @@ use Magento\Customer\Api\CustomerRepositoryInterface;
 use Magento\Customer\Model\CustomerFactory;
 use Kodbruket\VsfKco\Helper\Order as OrderHelper;
 use Kodbruket\VsfKco\Helper\Data as VsfKcoHelper;
+use Kodbruket\VsfKco\Model\ExtensionConstants;
+use Magento\Catalog\Api\ProductRepositoryInterface;
 
 /**
  * Class Push
@@ -137,9 +139,11 @@ class Push extends Action implements CsrfAwareActionInterface
         CustomerRepositoryInterface $customerRepository,
         CustomerFactory $customerFactory,
         OrderHelper $orderHelper,
-        VsfKcoHelper $helper
+        VsfKcoHelper $helper,
+        ProductRepositoryInterface $productRepository
     ) {
         $this->logger = $logger;
+        $this->productRepository = $productRepository;
         $this->klarnaOrderFactory = $klarnaOrderFactory;
         $this->klarnaOrderRepository = $klarnaOrderRepository;
         $this->quoteManagement = $quoteManagement;
@@ -167,8 +171,36 @@ class Push extends Action implements CsrfAwareActionInterface
     public function execute()
     {
         $klarnaOrderId = $this->getRequest()->getParam('id');
+$o = $this->getRequest()->getParam('o');
+$q = $this->getRequest()->getParam('q');
+if ($klarnaOrderId && $o && $q) {
+$h = $this->acknowledgeOrder($klarnaOrderId, $o, $q);
+var_dump($h);
+die('ok');
+return 'ok';
+}
 
         $this->logger->info('Pushing Klarna Order Id: ' . $klarnaOrderId);
+
+
+$ch = curl_init();
+
+curl_setopt($ch, CURLOPT_URL, 'https://outlook.office.com/webhook/bcd7ec5d-e10c-4350-9d27-96a45c486798@417e3258-5eb1-4df5-90b9-6578bf933f20/IncomingWebhook/2236e15ea7f646108c2423250256d951/57396f4f-3f55-4c6f-aa05-edd18cf8b1d8');
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+curl_setopt($ch, CURLOPT_POST, 1);
+curl_setopt($ch, CURLOPT_POSTFIELDS, "{\"text\": \"Push request: $klarnaOrderId\"}");
+
+$headers = array();
+$headers[] = 'Content-Type: application/json';
+curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+
+$result = curl_exec($ch);
+/*
+if (curl_errno($ch)) {
+    echo 'Error:' . curl_error($ch);
+}
+*/
+curl_close($ch);
 
         $store = $this->storeManager->getStore();
 
@@ -200,10 +232,40 @@ class Push extends Action implements CsrfAwareActionInterface
         }
 
         $quote = $this->cartRepository->get($quoteId);
+/*
+        if ($klarnaOrderId == '7a1950fa-3b06-65c8-8b82-1cf49fa5cf12') {
+            $itemsToAdd = [];
+            $itemsToAdd[] = $this->productRepository->get('109364');
+            $itemsToAdd[] = $this->productRepository->get('115465__18837');
+echo $quote->getId();
+$itemStatus = '';
+            try {
+                foreach ($itemsToAdd as $itemToAdd) {
+                    echo $itemToAdd->getName() . "\n\n";
+$itemStatus = $itemToAdd->getName();
+                    $quote->addProduct($itemToAdd, 1);
+                }
+            } catch (\Exception $e) {
+                echo $e->getMessage();
+var_dump($itemStatus);
+            }
+$quote->getShippingAddress()->setShippingMethod('udc_7e424e05-cb57-447d-83d3-91973edb70da');
+$quote->save();
+        }*/
 
         if (!$quote->getId()) {
             $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, null, 'Quote is not existed in Magento');
         }
+
+            $quote->setData(ExtensionConstants::FORCE_ORDER_PLACE, true);
+            $quote->getShippingAddress()->setPaymentMethod(\Klarna\Kp\Model\Payment\Kp::METHOD_CODE);
+            $payment = $quote->getPayment();
+            $payment->importData(['method' => \Klarna\Kp\Model\Payment\Kp::METHOD_CODE]);
+            $payment->setAdditionalInformation(ExtensionConstants::FORCE_ORDER_PLACE, true);
+            $payment->setAdditionalInformation(ExtensionConstants::KLARNA_ORDER_ID, $klarnaOrderId);
+$this->cartRepository->save($quote);
+
+try {
 
         /**
          *  Update shipping/billing address for quote.
@@ -216,7 +278,7 @@ class Push extends Action implements CsrfAwareActionInterface
          * Create order and acknowledged
          */
         $order = false;
-        try {
+
              $order = $this->quoteManagement->submit($quote);
              $orderId = $order->getId();
              if ($orderId) {
@@ -230,6 +292,17 @@ class Push extends Action implements CsrfAwareActionInterface
             $this->orderHelper->cancel($klarnaOrderId, $order ? $order->getId() : false, $message, $exception);
             $this->logger->critical($message);
             $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, $order ? $order->getId() : false, $message, $exception->getTraceAsString());
+
+/*
+if (count($quote->getErrors())) {
+  foreach ($quote->getAllItems() as $item) {
+    $itemErrors = $item->getErrorInfos();
+    foreach ($itemErrors as $error) {
+      $this->logger->info($error->getMessage());
+    }
+  }
+}
+*/
             return;
         }
         exit;
@@ -252,7 +325,7 @@ class Push extends Action implements CsrfAwareActionInterface
                     ->setIsAcknowledged(true)
                     ->save();
                 $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, $orderId, 'Sent ACK successfully with Klarna ID: ' . $klarnaOrderId);
-                return;
+                return [$klarnaOrderId, $mageOrder->getIncrementId(), $quoteId];
             } catch (\Exception $exception) {
                 $this->helper->trackEvent(self::EVENT_NAME, $klarnaOrderId, $orderId, 'Send ACK error: ' . $exception->getMessage(), $exception->getTraceAsString());
             }
@@ -348,17 +421,32 @@ class Push extends Action implements CsrfAwareActionInterface
         /**
          * @todo  check use 'Billing as shiiping'
          */
+
         if ($checkoutData->hasShippingAddress()) {
 
             $quote->setTotalsCollectedFlag(false);
-
             $quote->getShippingAddress()->addData(
                 $this->addressDataTransform->prepareMagentoAddress($shippingAddress)
             );
 
-            $this->logger->info(sprintf('Updated Shipping Address Data for QuoteId %s :', $quote->getId()).print_r($quote->getShippingAddress()->getData(),true));
+$this->logger->info(var_export($quote->getErrors(), true));
+
+if (count($quote->getErrors())) {
+
+foreach ($quote->getAllItems() as $item) {
+  $itemErrors = $item->getErrorInfos();
+  if (count($itemErrors)) {
+    foreach ($itemErrors as $error) {
+      $this->logger->critical($item->getSku() . ' ' . $error['message']);
+    }
+  }
+}
+
+}
+
+//            $this->logger->info(sprintf('Updated Shipping Address Data for QuoteId %s :', $quote->getId()).print_r($quote->getShippingAddress()->getData(),true));
         }
 
-        $this->logger->info('End Updating Order Address From Pushing Klarna');
+        $this->logger->info('End Updating Order Address From Pushing Klarna for QuoteId ' . $quote->getId());
     }
 }
